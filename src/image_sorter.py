@@ -140,7 +140,7 @@ class ImageSorter:
         """Calculate the aspect ratio of the image and return the corresponding folder."""
         baseFolder = baseFolder if baseFolder else self.destination_directory
         baseFolder = os.path.abspath(baseFolder)
-        if not self.is_within_base_directory(baseFolder):
+        if not self.is_within_base_directory(self.base_directory):
             self.logger.error(f"Attempted to access restricted folder: {baseFolder}")
             return os.path.join(self.destination_directory, self.folder_names["errors"])
 
@@ -179,15 +179,19 @@ class ImageSorter:
         """Determine the size-based subfolder based on image dimensions and DPI."""
         if width < self.large_pixel_threshold and height < self.large_pixel_threshold:
             base_folder += f"/{self.folder_names['small']}"
-        elif width > self.xl_pixel_threshold and height > self.xl_pixel_threshold:
-            base_folder += f"/{self.folder_names['xlarge']}"
-            if (
+        elif (
+            width > self.xl_pixel_threshold
+            and height > self.xl_pixel_threshold
+            and (
                 dpi
                 and dpi >= self.dpi_threshold
                 and mod_year
                 and mod_year >= self.min_year
-            ):
-                base_folder += f"/{self.folder_names['best_quality']}"
+            )
+        ):
+            base_folder += f"/{self.folder_names['best_quality']}"
+        elif width > self.xl_pixel_threshold and height > self.xl_pixel_threshold:
+            base_folder += f"/{self.folder_names['xlarge']}"
         elif width > self.large_pixel_threshold and height > self.large_pixel_threshold:
             base_folder += f"/{self.folder_names['large']}"
         else:
@@ -383,11 +387,10 @@ class ImageSorter:
 if __name__ == "__main__":
     # Parse command line arguments
     args = sys.argv[1:]
-    base_directory = (
-        os.path.abspath(args[0])
-        if len(args) > 0 and not args[0].startswith("-")
-        else os.path.abspath("Images")
-    )
 
     sorter = ImageSorter(config_path="config/config.json")
+    # Override base_directory if the first command line argument is provided
+    if len(args) > 0 and not args[0].startswith("-"):
+        sorter.base_directory = os.path.abspath(args[0])
+
     sorter.run()

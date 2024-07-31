@@ -10,6 +10,9 @@ logs/
 # Config
 config/config.json
 
+# Output
+Sorted Images/
+
 # Test output
 .coverage
 htmlcov/
