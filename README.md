@@ -1,12 +1,12 @@
-# Image Sorter
+# Image Quality Filterer
 
 ## Overview
 
-**Image Sorter** is a Python script designed to organize and sort image files based on various criteria such as aspect ratio, resolution, and modification date. The script supports multi-threaded processing and is highly configurable, making it suitable for large-scale image sorting tasks.
+**Image Quality Filterer** is a Python script designed to organize and sort image files based on various criteria such as image shape (aspect ratio), resolution, and modification date. The script supports multi-threaded processing and is highly configurable, making it suitable for large-scale image sorting tasks.
 
 ## Features
 
-- Sort images by aspect ratio, resolution, and modification date
+- Sort images by shape (aspect ratio), resolution, and modification date
 - Multi-threaded processing for improved performance
 - Batch processing to manage system resources effectively
 - Configurable through a `config.json` file
@@ -46,53 +46,49 @@ The script is configured using a config.json file located in the config director
 ```json
 {
  "_comments": {
-  "base_directory": "The directory containing the images to be sorted.",
-  "destination_directory": "The base directory where sorted images will be stored.",
-  "large_pixel_threshold": "Pixel threshold for categorizing images as large.",
+  "input_directory": "The directory containing the images to be sorted.",
+  "destination_directory": "The folder where sorted images will be copied. This can be customized.",
+  "keep_directory_structure": "If true, organizes output into identical directory structure as input.",
+  "sort_with_image_shape": "If true, images are also sorted by shape (e.g., 'landscape', 'portrait').",
+  "min_modification_year": "Minimum year for categorizing images into the 'Best Quality' folder, if it also meets the DPI threshold.",
+  "quality_dpi_threshold": "DPI threshold for high-quality images.",
   "xl_pixel_threshold": "Pixel threshold for categorizing images as extra-large.",
-  "dpi_threshold": "DPI threshold for high-quality images.",
-  "min_year": "Minimum year for categorizing images into the 'Best Quality' folder.",
-  "simple_restructure_mode": "Boolean flag to enable simple restructure mode.",
-  "sort_with_image_shape": "Boolean flag to enable sorting by image shape.",
-  "dpi_date_sort_mode": "Boolean flag to enable sorting with additional criteria based on DPI and modification date.",
+  "large_pixel_threshold": "Pixel threshold for categorizing images as large.",
   "folder_names": {
-   "small": "Subfolder name for small images.",
-   "large": "Subfolder name for large images.",
-   "xlarge": "Subfolder name for extra-large images.",
-   "standard": "Subfolder name for standard images.",
-   "best_quality": "Subfolder name for best quality images.",
+   "small": "Subfolder name for images smaller than the 'large_pixel_threshold' in both dimensions.",
+   "standard": "Subfolder name for images larger than the 'large_pixel_threshold' in only one dimension.",
+   "large": "Subfolder name for images larger than the 'large_pixel_threshold' but smaller than the 'xl_pixel_threshold'.",
+   "xlarge": "Subfolder name for images larger than the 'xl_pixel_threshold'.",
+   "best_quality": "Subfolder name for high-quality, XL images also meeting the DPI and year thresholds.",
    "errors": "Subfolder name for images that encountered errors during processing."
   },
-  "max_workers": "The number of worker threads for processing images concurrently.",
-  "batch_size": "The number of images to process in each batch.",
+  "max_workers": "The maximum number of workers to use for parallel processing.",
   "log_level": "The logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)"
  },
- "base_directory": "Images",
+ "input_directory": "data/Images",
  "destination_directory": "Sorted Images",
- "large_pixel_threshold": 1000,
- "xl_pixel_threshold": 2000,
- "dpi_threshold": 300,
- "min_year": 2016,
- "simple_restructure_mode": false,
+ "keep_directory_structure": false,
  "sort_with_image_shape": true,
- "dpi_date_sort_mode": false,
+ "min_modification_year": 2016,
+ "quality_dpi_threshold": 300,
+ "xl_pixel_threshold": 2000,
+ "large_pixel_threshold": 1000,
  "folder_names": {
   "small": "Small",
+  "standard": "Standard",
   "large": "Large",
   "xlarge": "XLarge",
-  "standard": "Standard",
   "best_quality": "Best Quality",
   "errors": "Errors"
  },
  "max_workers": 8,
- "batch_size": 100,
  "log_level": "INFO"
 }
 ```
 
 ### Usage
 
-Run the script from the command line, specifying the base directory if different from the default:
+Run the script from the command line, specifying the base directory if different from configuration file:
 
 ```bash
 python src/image_sorter.py /path/to/images
@@ -126,4 +122,4 @@ Contributions are welcome! Please feel free to submit a pull request or open an 
 
 ### License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+This project is licensed under the MIT License. See the `LICENSE` file for details.

@@ -21,17 +21,19 @@ class ImageSorter:
         # Ignore comments in the config
         config = {k: v for k, v in config.items() if not k.startswith("_")}
 
-        self.base_directory = os.path.abspath(config.get("base_directory", "Images"))
+        # Load config values
+        self.input_directory = os.path.abspath(
+            config.get("input_directory", "data/Images")
+        )
         self.destination_directory = os.path.abspath(
             config.get("destination_directory", "Sorted Images")
         )
         self.large_pixel_threshold = config.get("large_pixel_threshold", 1000)
         self.xl_pixel_threshold = config.get("xl_pixel_threshold", 2000)
-        self.dpi_threshold = config.get("dpi_threshold", 300)
-        self.min_year = config.get("min_year", 2016)
-        self.simple_restructure_mode = config.get("simple_restructure_mode", False)
+        self.quality_dpi_threshold = config.get("quality_dpi_threshold", 300)
+        self.min_modification_year = config.get("min_modification_year", 2016)
+        self.keep_directory_structure = config.get("keep_directory_structure", False)
         self.sort_with_image_shape = config.get("sort_with_image_shape", True)
-        self.dpi_date_sort_mode = config.get("dpi_date_sort_mode", False)
 
         self.folder_names = config.get("folder_names", {})
         self.folder_names.setdefault("small", "Small")
@@ -51,6 +53,7 @@ class ImageSorter:
         ).upper()  # Default to INFO if not specified
         numeric_log_level = getattr(logging, log_level, logging.INFO)
 
+        # Initialize other variables
         self.sort_queue = []
         self.error_count = 0
         self.processed_count = 0
@@ -80,14 +83,15 @@ class ImageSorter:
     def process_directory(self, directory):
         """Process a given directory to enqueue supported images for sorting."""
         directory = os.path.abspath(directory)  # Ensure the directory is absolute
-        if not self.is_within_base_directory(directory):
+        if not self.is_within_input_directory(directory):
             self.logger.error(f"Attempted access to restricted directory: {directory}")
             return
 
         try:
+            # Recursively process all subdirectories
             for dir_item in os.scandir(directory):
                 item_path = os.path.abspath(dir_item.path)
-                if not self.is_within_base_directory(item_path):
+                if not self.is_within_input_directory(item_path):
                     self.logger.error(
                         f"Attempted access to restricted directory: {item_path}"
                     )
@@ -96,7 +100,10 @@ class ImageSorter:
                 if dir_item.is_dir():
                     self.process_directory(item_path)
                 elif dir_item.is_file() and self.is_supported_image(dir_item.name):
+                    # Process the image file
                     self.process_image_file(item_path)
+
+        # Handle exceptions
         except (PermissionError, FileNotFoundError) as e:
             self.error_count += 1
             self.logger.error(f"Error accessing directory '{directory}': {e}")
@@ -106,29 +113,33 @@ class ImageSorter:
                 f"An unexpected error occurred while processing the directory '{directory}': {e}"
             )
 
-    def process_image_file(self, image_path):
+    def process_image_file(self, initial_image_path):
         """Process an individual image file, determine its destination, and enqueue it."""
-        if self.simple_restructure_mode:
+        if self.keep_directory_structure:
+            # Determine the full destination path, keeping the initial directory structure intact
             new_folder_path = os.path.join(
                 self.destination_directory,
-                os.path.relpath(os.path.dirname(image_path), self.base_directory),
+                os.path.relpath(
+                    os.path.dirname(initial_image_path), self.input_directory
+                ),
             )
-            new_folder_path = os.path.abspath(new_folder_path)
-            if not self.is_within_base_directory(new_folder_path):
-                self.logger.error(
-                    f"Attempted to create folder outside base directory: {new_folder_path}"
-                )
-                return
-            aspect_ratio_folder = self.get_aspect_ratio_folder(
-                image_path, baseFolder=new_folder_path
+            new_folder_path = os.path.abspath(
+                new_folder_path
+            )  # Ensure the path is absolute
+            # Determine the organization of the image and retrieve the full destination path
+            full_destination_path = self.determine_destination_path(
+                initial_image_path, baseDestinationFolder=new_folder_path
             )
         else:
-            aspect_ratio_folder = self.get_aspect_ratio_folder(image_path)
-        self.enqueue_image_for_sorting(image_path, aspect_ratio_folder)
+            # Determine the full destination path, ignoring the initial directory structure
+            full_destination_path = self.determine_destination_path(initial_image_path)
 
-    def is_within_base_directory(self, path):
-        """Check if the given path is within the base directory."""
-        return os.path.commonpath([self.base_directory, path]) == self.base_directory
+        # Enqueue the image for sorting
+        self.enqueue_image_for_sorting(initial_image_path, full_destination_path)
+
+    def is_within_input_directory(self, path):
+        """Check if the given path is within the input directory."""
+        return os.path.commonpath([self.input_directory, path]) == self.input_directory
 
     @staticmethod
     def is_supported_image(filename):
@@ -136,14 +147,16 @@ class ImageSorter:
         supported_extensions = (".jpg", ".jpeg", ".png", ".heic", ".webp")
         return filename.lower().endswith(supported_extensions)
 
-    def get_aspect_ratio_folder(self, image_path, baseFolder=None):
-        """Calculate the aspect ratio of the image and return the corresponding folder."""
-        baseFolder = baseFolder if baseFolder else self.destination_directory
-        baseFolder = os.path.abspath(baseFolder)
-        if not self.is_within_base_directory(self.base_directory):
-            self.logger.error(f"Attempted to access restricted folder: {baseFolder}")
-            return os.path.join(self.destination_directory, self.folder_names["errors"])
+    def determine_destination_path(self, image_path, baseDestinationFolder=None):
+        """Calculate the shape of the image and return the corresponding folder."""
+        baseDestinationFolder = (
+            baseDestinationFolder
+            if baseDestinationFolder
+            else self.destination_directory
+        )
+        baseDestinationFolder = os.path.abspath(baseDestinationFolder)
 
+        # Retrieve image information and determine the destination folder
         try:
             with Image.open(image_path) as im:
                 dpi = im.info.get("dpi", (0, 0))[0]
@@ -151,11 +164,17 @@ class ImageSorter:
                 mod_year = datetime.fromtimestamp(mod_time).year
 
                 width, height = im.size
+
+                # Determine the image size
                 folder = self.determine_size_folder(
-                    baseFolder, width, height, dpi, mod_year
+                    baseDestinationFolder, width, height, dpi, mod_year
                 )
-                if not self.sort_with_image_shape or not self.simple_restructure_mode:
-                    folder += "/" + self.get_aspect_ratio_label(width, height)
+
+                # Add the image shape to the folder name if the option is enabled
+                if self.sort_with_image_shape:
+                    folder += "/" + self.get_shape_label(width, height)
+
+        # Handle exceptions
         except UnidentifiedImageError:
             self.error_count += 1
             self.logger.error(f"Unidentified image format for '{image_path}'.")
@@ -177,31 +196,37 @@ class ImageSorter:
 
     def determine_size_folder(self, base_folder, width, height, dpi, mod_year):
         """Determine the size-based subfolder based on image dimensions and DPI."""
+        # Categorize the image based on its size
         if width < self.large_pixel_threshold and height < self.large_pixel_threshold:
+            # Small image
             base_folder += f"/{self.folder_names['small']}"
         elif (
             width > self.xl_pixel_threshold
             and height > self.xl_pixel_threshold
             and (
                 dpi
-                and dpi >= self.dpi_threshold
+                and dpi >= self.quality_dpi_threshold
                 and mod_year
-                and mod_year >= self.min_year
+                and mod_year >= self.min_modification_year
             )
         ):
+            # Best quality image
             base_folder += f"/{self.folder_names['best_quality']}"
         elif width > self.xl_pixel_threshold and height > self.xl_pixel_threshold:
+            # XL image
             base_folder += f"/{self.folder_names['xlarge']}"
         elif width > self.large_pixel_threshold and height > self.large_pixel_threshold:
+            # Large image
             base_folder += f"/{self.folder_names['large']}"
         else:
+            # Standard image
             base_folder += f"/{self.folder_names['standard']}"
         return base_folder
 
     @staticmethod
-    def get_aspect_ratio_label(width, height):
-        """Get the nearest common aspect ratio label for the given width and height."""
-        # Predefined common aspect ratio decimal ranges with their labels
+    def get_shape_label(width, height):
+        """Get the shape matching the nearest common aspect ratio label for the given width and height."""
+        # Predefined common aspect ratio decimal ranges with their shape labels
         aspect_ratio_ranges = {
             (0.9, 1.1): "square",
             (1.1, 2): "landscape",
@@ -216,7 +241,8 @@ class ImageSorter:
             if floor <= aspect_ratio and aspect_ratio <= ceiling:
                 return label
 
-        # If no common aspect ratio is found
+        # Otherwise, image must logically be 2:1 ratio or greater, a horizontal banner
+        # (or 1:2 ratio or smaller in which case it's a vertical banner)
         return "Banner"
 
     def enqueue_image_for_sorting(self, image_path, destination_folder):
@@ -230,6 +256,7 @@ class ImageSorter:
         unique_filename = filename
         counter = 1
 
+        # Increase the counter until a unique filename is found, append count to end of filename
         while os.path.exists(os.path.join(destination_folder, unique_filename)):
             unique_filename = f"{base} ({counter}){extension}"
             counter += 1
@@ -360,12 +387,12 @@ class ImageSorter:
                 f"Error: An unexpected error occurred while creating the base folder '{base_folder_name}'."
             )
 
-        if self.simple_restructure_mode:
+        if self.keep_directory_structure:
             self.logger.info("Simple restructure mode enabled.")
             print("Simple restructure mode enabled.")
 
         print("Processing images...")
-        self.process_directory(self.base_directory)
+        self.process_directory(self.input_directory)
         self.process_queue()
 
         end_time = time.time()
@@ -391,6 +418,6 @@ if __name__ == "__main__":
     sorter = ImageSorter(config_path="config/config.json")
     # Override base_directory if the first command line argument is provided
     if len(args) > 0 and not args[0].startswith("-"):
-        sorter.base_directory = os.path.abspath(args[0])
+        sorter.input_directory = os.path.abspath(args[0])
 
     sorter.run()
